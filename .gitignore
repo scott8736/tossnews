@@ -1,6 +1,7 @@
 node_modules
 dist
 *.ait
+.granite
 .DS_Store
 *.local
 .vite

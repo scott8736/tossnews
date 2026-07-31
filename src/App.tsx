@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TossAds } from "@apps-in-toss/web-framework";
 import { ListHeader, SegmentedControl, Skeleton, Top } from "@toss/tds-mobile";
 import "./App.css";
 import { BannerAd } from "./ads/BannerAd";
 import { safeIsSupported } from "./ads/safeIsSupported";
 import { useInterstitialAd } from "./ads/useInterstitialAd";
+import { useRewardedAd } from "./ads/useRewardedAd";
 import { BreakingTicker } from "./components/BreakingTicker";
 import { CategoryTabs, type ActiveTab } from "./components/CategoryTabs";
+import { FirstViewAdSheet } from "./components/FirstViewAdSheet";
 import { NewsDetail } from "./components/NewsDetail";
 import { NewsListItem } from "./components/NewsListItem";
 import { PointsSheet } from "./components/PointsSheet";
@@ -21,6 +23,7 @@ import {
   isLiveDataEnabled,
   type HomeFeed,
 } from "./api/naverNews";
+import { useFirstViewReward } from "./hooks/useFirstViewReward";
 import { usePreferredCategories } from "./hooks/usePreferredCategories";
 import { useScraps } from "./hooks/useScraps";
 import type { CategoryId, NewsItem, SortOrder } from "./types";
@@ -39,6 +42,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
+  const [pendingNews, setPendingNews] = useState<NewsItem | null>(null);
   const [preferenceOpen, setPreferenceOpen] = useState(false);
   const [scrapOpen, setScrapOpen] = useState(false);
   const [pointsOpen, setPointsOpen] = useState(false);
@@ -46,12 +50,44 @@ function App() {
   const { scraps, isScrapped, toggleScrap } = useScraps();
   const { preferred, toggle: togglePreferred } = usePreferredCategories();
   const interstitialAd = useInterstitialAd();
+  const firstViewReward = useFirstViewReward();
+  const pendingNewsRef = useRef<NewsItem | null>(null);
   const detailCloseCountRef = useRef(0);
+
+  useEffect(() => {
+    pendingNewsRef.current = pendingNews;
+  }, [pendingNews]);
+
+  // 첫 뉴스 보기 광고를 끝까지 시청하면 대기 중이던 기사를 열어줘요.
+  const handleFirstViewRewardEarned = useCallback(() => {
+    const news = pendingNewsRef.current;
+    if (!news) return;
+    firstViewReward.markShown();
+    setSelectedNews(news);
+    setPendingNews(null);
+  }, [firstViewReward]);
+
+  const rewardedAd = useRewardedAd(handleFirstViewRewardEarned);
 
   function closeSheets() {
     setScrapOpen(false);
     setPreferenceOpen(false);
     setPointsOpen(false);
+  }
+
+  // 처음 기사를 열 때만 리워드 광고 시청을 안내하고, 이후엔 바로 열어요.
+  function handleOpenNews(news: NewsItem) {
+    if (!firstViewReward.alreadyShown && rewardedAd.isSupported) {
+      setPendingNews(news);
+      return;
+    }
+    setSelectedNews(news);
+  }
+
+  function handleSkipFirstViewAd() {
+    firstViewReward.markShown();
+    setSelectedNews(pendingNewsRef.current);
+    setPendingNews(null);
   }
 
   function handleCloseDetail() {
@@ -181,7 +217,7 @@ function App() {
         </div>
       )}
 
-      <BreakingTicker items={breakingItems} onSelect={setSelectedNews} />
+      <BreakingTicker items={breakingItems} onSelect={handleOpenNews} />
 
       <div style={{ height: 8 }} />
 
@@ -248,7 +284,7 @@ function App() {
                 news={news}
                 rank={index + 1}
                 scrapped={isScrapped(news.id)}
-                onOpen={setSelectedNews}
+                onOpen={handleOpenNews}
                 onToggleScrap={toggleScrap}
               />
             ))}
@@ -280,7 +316,7 @@ function App() {
                       key={news.id}
                       news={news}
                       scrapped={isScrapped(news.id)}
-                      onOpen={setSelectedNews}
+                      onOpen={handleOpenNews}
                       onToggleScrap={toggleScrap}
                     />
                   ))}
@@ -312,7 +348,7 @@ function App() {
               key={news.id}
               news={news}
               scrapped={isScrapped(news.id)}
-              onOpen={setSelectedNews}
+              onOpen={handleOpenNews}
               onToggleScrap={toggleScrap}
             />
           ))}
@@ -338,8 +374,16 @@ function App() {
         open={scrapOpen}
         items={scraps}
         onClose={() => setScrapOpen(false)}
-        onOpenNews={setSelectedNews}
+        onOpenNews={handleOpenNews}
         onToggleScrap={toggleScrap}
+      />
+
+      <FirstViewAdSheet
+        open={pendingNews !== null}
+        isSupported={rewardedAd.isSupported}
+        isReady={rewardedAd.isReady}
+        onWatch={rewardedAd.show}
+        onSkip={handleSkipFirstViewAd}
       />
 
       <PointsSheet open={pointsOpen} onClose={() => setPointsOpen(false)} />
