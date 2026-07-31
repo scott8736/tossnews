@@ -83,6 +83,31 @@ export function ShareIcon({ size = 24, color = "#191F28" }: IconProps) {
   );
 }
 
+export function CheckCircleIcon({
+  size = 24,
+  checked = false,
+}: IconProps & { checked?: boolean }) {
+  if (checked) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" fill="#3182F6" />
+        <path
+          d="M7.5 12.5L10.3 15.3L16.5 9"
+          stroke="#fff"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9.25" stroke="#D1D6DB" strokeWidth={1.5} />
+    </svg>
+  );
+}
+
 export function FlameIcon({ size = 14, color = "#F04452" }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">

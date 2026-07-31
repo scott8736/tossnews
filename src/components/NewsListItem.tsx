@@ -1,26 +1,14 @@
 import { Badge, ListRow } from "@toss/tds-mobile";
-import { CATEGORY_LABEL } from "../data/categories";
+import { CATEGORY_MAP } from "../data/categories";
 import type { NewsItem } from "../types";
 import { toRelativeTime } from "../utils/time";
 import { BookmarkIcon } from "./icons";
-
-const CATEGORY_BADGE_COLOR: Record<
-  string,
-  "blue" | "teal" | "green" | "red" | "yellow" | "elephant"
-> = {
-  politics: "elephant",
-  economy: "blue",
-  society: "green",
-  it: "teal",
-  sports: "yellow",
-  entertainment: "red",
-};
 
 interface NewsListItemProps {
   news: NewsItem;
   scrapped: boolean;
   onOpen: (news: NewsItem) => void;
-  onToggleScrap: (id: string) => void;
+  onToggleScrap: (news: NewsItem) => void;
 }
 
 export function NewsListItem({
@@ -29,19 +17,21 @@ export function NewsListItem({
   onOpen,
   onToggleScrap,
 }: NewsListItemProps) {
+  const category = CATEGORY_MAP[news.category];
+
   return (
     <ListRow
       onClick={() => onOpen(news)}
       withTouchEffect
-      left={<ListRow.AssetImage src={news.thumbnail} size="small" shape="squircle" />}
+      left={
+        <ListRow.AssetText shape="squircle" size="small">
+          {category.initial}
+        </ListRow.AssetText>
+      }
       contents={
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <Badge
-            size="xsmall"
-            variant="weak"
-            color={CATEGORY_BADGE_COLOR[news.category] ?? "blue"}
-          >
-            {CATEGORY_LABEL[news.category]}
+          <Badge size="xsmall" variant="weak" color={category.color}>
+            {category.label}
           </Badge>
           <div
             style={{
@@ -67,7 +57,7 @@ export function NewsListItem({
           aria-label={scrapped ? "스크랩 취소" : "스크랩하기"}
           onClick={(event) => {
             event.stopPropagation();
-            onToggleScrap(news.id);
+            onToggleScrap(news);
           }}
           style={{
             border: "none",

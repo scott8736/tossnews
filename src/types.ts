@@ -1,5 +1,4 @@
 export type CategoryId =
-  | "all"
   | "politics"
   | "economy"
   | "society"
@@ -10,17 +9,18 @@ export type CategoryId =
 export interface Category {
   id: CategoryId;
   label: string;
+  initial: string;
+  color: "blue" | "teal" | "green" | "red" | "yellow" | "elephant";
 }
+
+export type SortOrder = "date" | "sim";
 
 export interface NewsItem {
   id: string;
-  category: Exclude<CategoryId, "all">;
+  category: CategoryId;
   title: string;
+  description: string;
+  link: string;
   source: string;
   publishedAt: string;
-  thumbnail: string;
-  breaking?: boolean;
-  summaryLine: string;
-  summaryShort: string;
-  summaryLong: string;
 }

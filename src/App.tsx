@@ -1,55 +1,77 @@
-import { useMemo, useState } from "react";
-import { Top } from "@toss/tds-mobile";
+import { useEffect, useState } from "react";
+import { SegmentedControl, Skeleton, Top } from "@toss/tds-mobile";
 import "./App.css";
 import { BreakingTicker } from "./components/BreakingTicker";
-import { CategoryTabs } from "./components/CategoryTabs";
+import { CategoryTabs, type ActiveTab } from "./components/CategoryTabs";
 import { NewsDetail } from "./components/NewsDetail";
 import { NewsListItem } from "./components/NewsListItem";
 import { PreferenceSheet } from "./components/PreferenceSheet";
 import { ScrapSheet } from "./components/ScrapSheet";
 import { BookmarkIcon, SettingsIcon } from "./components/icons";
-import { NEWS_ITEMS } from "./data/newsData";
+import { CATEGORIES } from "./data/categories";
+import {
+  fetchBreakingNews,
+  fetchNewsByCategory,
+  fetchNewsForCategories,
+  isLiveDataEnabled,
+} from "./api/naverNews";
 import { usePreferredCategories } from "./hooks/usePreferredCategories";
 import { useScraps } from "./hooks/useScraps";
-import type { CategoryId, NewsItem } from "./types";
+import type { NewsItem, SortOrder } from "./types";
+
+const ALL_CATEGORY_IDS = CATEGORIES.map((c) => c.id);
 
 function App() {
-  const [activeCategory, setActiveCategory] = useState<CategoryId>("all");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("all");
+  const [sort, setSort] = useState<SortOrder>("date");
+  const [items, setItems] = useState<NewsItem[]>([]);
+  const [breakingItems, setBreakingItems] = useState<NewsItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
   const [preferenceOpen, setPreferenceOpen] = useState(false);
   const [scrapOpen, setScrapOpen] = useState(false);
 
-  const { scrapIds, isScrapped, toggleScrap } = useScraps();
+  const { scraps, isScrapped, toggleScrap } = useScraps();
   const { preferred, toggle: togglePreferred } = usePreferredCategories();
 
-  const breakingItems = useMemo(
-    () => NEWS_ITEMS.filter((item) => item.breaking),
-    [],
-  );
+  useEffect(() => {
+    fetchBreakingNews().then(setBreakingItems).catch(() => setBreakingItems([]));
+  }, []);
 
-  const visibleItems = useMemo(() => {
-    const filtered =
-      activeCategory === "all"
-        ? NEWS_ITEMS
-        : NEWS_ITEMS.filter((item) => item.category === activeCategory);
+  useEffect(() => {
+    let cancelled = false;
 
-    if (activeCategory !== "all" || preferred.length === 0) {
-      return filtered;
+    async function load() {
+      setLoading(true);
+      setErrorMessage(null);
+      try {
+        const result =
+          activeTab === "all"
+            ? await fetchNewsForCategories(
+                preferred.length > 0 ? preferred : ALL_CATEGORY_IDS,
+                sort,
+              )
+            : await fetchNewsByCategory(activeTab, sort);
+
+        if (!cancelled) setItems(result);
+      } catch (error) {
+        if (!cancelled) {
+          setItems([]);
+          setErrorMessage(
+            error instanceof Error ? error.message : "뉴스를 불러오지 못했어요.",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
 
-    const preferredItems = filtered.filter((item) =>
-      preferred.includes(item.category),
-    );
-    const restItems = filtered.filter(
-      (item) => !preferred.includes(item.category),
-    );
-    return [...preferredItems, ...restItems];
-  }, [activeCategory, preferred]);
-
-  const scrappedItems = useMemo(
-    () => NEWS_ITEMS.filter((item) => scrapIds.includes(item.id)),
-    [scrapIds],
-  );
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, sort, preferred]);
 
   return (
     <>
@@ -68,14 +90,20 @@ function App() {
           <div style={{ display: "flex", gap: 4 }}>
             <button
               aria-label="스크랩한 뉴스 보기"
-              onClick={() => setScrapOpen(true)}
+              onClick={() => {
+                setPreferenceOpen(false);
+                setScrapOpen(true);
+              }}
               style={{ border: "none", background: "none", padding: 8, cursor: "pointer" }}
             >
-              <BookmarkIcon size={22} filled={scrapIds.length > 0} color="#333D4B" />
+              <BookmarkIcon size={22} filled={scraps.length > 0} color="#333D4B" />
             </button>
             <button
               aria-label="관심 카테고리 설정"
-              onClick={() => setPreferenceOpen(true)}
+              onClick={() => {
+                setScrapOpen(false);
+                setPreferenceOpen(true);
+              }}
               style={{ border: "none", background: "none", padding: 8, cursor: "pointer" }}
             >
               <SettingsIcon size={22} color="#333D4B" />
@@ -84,22 +112,93 @@ function App() {
         }
       />
 
+      {!isLiveDataEnabled() && (
+        <div
+          style={{
+            margin: "0 20px 12px",
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: "#F2F4F6",
+            fontSize: 12.5,
+            color: "#6B7684",
+          }}
+        >
+          지금은 데모 데이터를 보여드리고 있어요. VITE_NEWS_PROXY_URL을 설정하면 실시간 네이버
+          뉴스로 자동 전환돼요.
+        </div>
+      )}
+
       <BreakingTicker items={breakingItems} onSelect={setSelectedNews} />
 
       <div style={{ height: 8 }} />
 
-      <CategoryTabs active={activeCategory} onChange={setActiveCategory} />
+      <CategoryTabs active={activeTab} onChange={setActiveTab} />
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          padding: "0 20px 8px",
+        }}
+      >
+        <SegmentedControl
+          size="small"
+          value={sort}
+          onChange={(value) => setSort(value as SortOrder)}
+        >
+          <SegmentedControl.Item value="date">최신순</SegmentedControl.Item>
+          <SegmentedControl.Item value="sim">정확도순</SegmentedControl.Item>
+        </SegmentedControl>
+      </div>
 
       <div style={{ paddingBottom: 24 }}>
-        {visibleItems.map((news) => (
-          <NewsListItem
-            key={news.id}
-            news={news}
-            scrapped={isScrapped(news.id)}
-            onOpen={setSelectedNews}
-            onToggleScrap={toggleScrap}
-          />
-        ))}
+        {loading && (
+          <div style={{ padding: "0 20px" }}>
+            <Skeleton pattern="subtitleListWithIcon" repeatLastItemCount={5} />
+          </div>
+        )}
+
+        {!loading && errorMessage && (
+          <div
+            style={{
+              margin: "24px 20px",
+              padding: "20px 16px",
+              borderRadius: 12,
+              background: "#FFF1F1",
+              color: "#F04452",
+              fontSize: 14,
+              textAlign: "center",
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
+
+        {!loading && !errorMessage && items.length === 0 && (
+          <div
+            style={{
+              margin: "24px 20px",
+              padding: "32px 16px",
+              textAlign: "center",
+              color: "#8B95A1",
+              fontSize: 14,
+            }}
+          >
+            보여드릴 소식이 없어요.
+          </div>
+        )}
+
+        {!loading &&
+          !errorMessage &&
+          items.map((news) => (
+            <NewsListItem
+              key={news.id}
+              news={news}
+              scrapped={isScrapped(news.id)}
+              onOpen={setSelectedNews}
+              onToggleScrap={toggleScrap}
+            />
+          ))}
       </div>
 
       {selectedNews && (
@@ -120,7 +219,7 @@ function App() {
 
       <ScrapSheet
         open={scrapOpen}
-        items={scrappedItems}
+        items={scraps}
         onClose={() => setScrapOpen(false)}
         onOpenNews={setSelectedNews}
         onToggleScrap={toggleScrap}

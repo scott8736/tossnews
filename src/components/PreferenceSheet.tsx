@@ -1,6 +1,7 @@
-import { BottomSheet, Button, Checkbox, ListRow } from "@toss/tds-mobile";
+import { BottomSheet, Button, ListRow } from "@toss/tds-mobile";
 import { CATEGORIES } from "../data/categories";
 import type { CategoryId } from "../types";
+import { CheckCircleIcon } from "./icons";
 
 interface PreferenceSheetProps {
   open: boolean;
@@ -15,8 +16,6 @@ export function PreferenceSheet({
   onToggle,
   onClose,
 }: PreferenceSheetProps) {
-  const selectable = CATEGORIES.filter((c) => c.id !== "all");
-
   return (
     <BottomSheet
       open={open}
@@ -36,24 +35,19 @@ export function PreferenceSheet({
       }
     >
       <div style={{ padding: "4px 0 8px" }}>
-        {selectable.map((category) => {
+        {CATEGORIES.map((category) => {
           const checked = preferred.includes(category.id);
           return (
             <ListRow
               key={category.id}
               onClick={() => onToggle(category.id)}
+              withTouchEffect
               contents={
                 <span style={{ fontSize: 15, color: "#191F28" }}>
                   {category.label}
                 </span>
               }
-              right={
-                <Checkbox.Circle
-                  checked={checked}
-                  onCheckedChange={() => onToggle(category.id)}
-                  aria-label={`${category.label} 관심 카테고리로 설정`}
-                />
-              }
+              right={<CheckCircleIcon checked={checked} />}
             />
           );
         })}

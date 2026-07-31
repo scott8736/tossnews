@@ -7,7 +7,7 @@ interface ScrapSheetProps {
   items: NewsItem[];
   onClose: () => void;
   onOpenNews: (news: NewsItem) => void;
-  onToggleScrap: (id: string) => void;
+  onToggleScrap: (news: NewsItem) => void;
 }
 
 export function ScrapSheet({

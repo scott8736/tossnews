@@ -1,0 +1,14 @@
+{
+  "name": "tossnews-proxy",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "secret:naver-id": "wrangler secret put NAVER_CLIENT_ID",
+    "secret:naver-secret": "wrangler secret put NAVER_CLIENT_SECRET"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

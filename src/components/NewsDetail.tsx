@@ -1,30 +1,17 @@
 import { useState } from "react";
-import {
-  Badge,
-  CTAButton,
-  FixedBottomCTA,
-  SegmentedControl,
-  Toast,
-} from "@toss/tds-mobile";
-import { CATEGORY_LABEL } from "../data/categories";
+import { Badge, CTAButton, FixedBottomCTA, Toast } from "@toss/tds-mobile";
+import { CATEGORY_MAP } from "../data/categories";
 import type { NewsItem } from "../types";
+import { openExternalUrl } from "../utils/openExternalUrl";
 import { toRelativeTime } from "../utils/time";
 import { BackIcon, BookmarkIcon, ShareIcon } from "./icons";
-
-type SummaryDepth = "line" | "short" | "long";
 
 interface NewsDetailProps {
   news: NewsItem;
   scrapped: boolean;
   onClose: () => void;
-  onToggleScrap: (id: string) => void;
+  onToggleScrap: (news: NewsItem) => void;
 }
-
-const SUMMARY_LABEL: Record<SummaryDepth, string> = {
-  line: "한 줄",
-  short: "짧게",
-  long: "자세히",
-};
 
 export function NewsDetail({
   news,
@@ -32,21 +19,14 @@ export function NewsDetail({
   onClose,
   onToggleScrap,
 }: NewsDetailProps) {
-  const [depth, setDepth] = useState<SummaryDepth>("short");
   const [toastOpen, setToastOpen] = useState(false);
-
-  const summaryText =
-    depth === "line"
-      ? news.summaryLine
-      : depth === "short"
-        ? news.summaryShort
-        : news.summaryLong;
+  const category = CATEGORY_MAP[news.category];
 
   async function handleShare() {
     const shareData = {
       title: news.title,
-      text: news.summaryLine,
-      url: window.location.href,
+      text: news.description,
+      url: news.link,
     };
 
     try {
@@ -54,7 +34,7 @@ export function NewsDetail({
         await navigator.share(shareData);
         return;
       }
-      await navigator.clipboard.writeText(`${news.title}\n${window.location.href}`);
+      await navigator.clipboard.writeText(`${news.title}\n${news.link}`);
       setToastOpen(true);
     } catch {
       // 사용자가 공유를 취소한 경우에는 별도 처리를 하지 않아요.
@@ -90,7 +70,7 @@ export function NewsDetail({
         </button>
         <button
           aria-label={scrapped ? "스크랩 취소" : "스크랩하기"}
-          onClick={() => onToggleScrap(news.id)}
+          onClick={() => onToggleScrap(news)}
           style={{ border: "none", background: "none", padding: 8, cursor: "pointer" }}
         >
           <BookmarkIcon color={scrapped ? "#3182F6" : "#191F28"} filled={scrapped} />
@@ -98,12 +78,8 @@ export function NewsDetail({
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "0 20px 32px" }}>
-        <Badge
-          size="small"
-          variant="weak"
-          color="blue"
-        >
-          {CATEGORY_LABEL[news.category]}
+        <Badge size="small" variant="weak" color={category.color}>
+          {category.label}
         </Badge>
 
         <h1
@@ -118,28 +94,8 @@ export function NewsDetail({
           {news.title}
         </h1>
 
-        <div style={{ fontSize: 13, color: "#8B95A1", marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: "#8B95A1", marginBottom: 20 }}>
           {news.source} · {toRelativeTime(news.publishedAt)}
-        </div>
-
-        <img
-          src={news.thumbnail}
-          alt=""
-          style={{ width: "100%", borderRadius: 16, display: "block", marginBottom: 20 }}
-        />
-
-        <div style={{ marginBottom: 12 }}>
-          <SegmentedControl
-            size="small"
-            value={depth}
-            onChange={(value) => setDepth(value as SummaryDepth)}
-          >
-            {(Object.keys(SUMMARY_LABEL) as SummaryDepth[]).map((key) => (
-              <SegmentedControl.Item key={key} value={key}>
-                {SUMMARY_LABEL[key]}
-              </SegmentedControl.Item>
-            ))}
-          </SegmentedControl>
         </div>
 
         <p
@@ -148,15 +104,38 @@ export function NewsDetail({
             lineHeight: 1.7,
             color: "#333D4B",
             whiteSpace: "pre-line",
+            marginBottom: 24,
           }}
         >
-          {summaryText}
+          {news.description}
         </p>
+
+        <button
+          onClick={() => openExternalUrl(news.link)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            width: "100%",
+            boxSizing: "border-box",
+            padding: "14px 16px",
+            borderRadius: 12,
+            border: "1px solid #E5E8EB",
+            background: "#F9FAFB",
+            cursor: "pointer",
+            fontSize: 14,
+            fontWeight: 600,
+            color: "#333D4B",
+          }}
+        >
+          {news.source}에서 원문 기사 보기
+          <span aria-hidden="true">→</span>
+        </button>
       </div>
 
       <FixedBottomCTA.Double
         leftButton={
-          <CTAButton color="dark" variant="weak" onClick={() => onToggleScrap(news.id)}>
+          <CTAButton color="dark" variant="weak" onClick={() => onToggleScrap(news)}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <BookmarkIcon size={18} color="#333D4B" filled={scrapped} />
               {scrapped ? "스크랩 취소" : "스크랩"}

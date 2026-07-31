@@ -1,33 +1,36 @@
 import { useCallback, useEffect, useState } from "react";
+import type { NewsItem } from "../types";
 
-const STORAGE_KEY = "ntn:scraps";
+const STORAGE_KEY = "ntn:scraps:v2";
 
-function readScraps(): string[] {
+function readScraps(): NewsItem[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as string[]) : [];
+    return raw ? (JSON.parse(raw) as NewsItem[]) : [];
   } catch {
     return [];
   }
 }
 
 export function useScraps() {
-  const [scrapIds, setScrapIds] = useState<string[]>(() => readScraps());
+  const [scraps, setScraps] = useState<NewsItem[]>(() => readScraps());
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(scrapIds));
-  }, [scrapIds]);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(scraps));
+  }, [scraps]);
 
   const isScrapped = useCallback(
-    (id: string) => scrapIds.includes(id),
-    [scrapIds],
+    (id: string) => scraps.some((item) => item.id === id),
+    [scraps],
   );
 
-  const toggleScrap = useCallback((id: string) => {
-    setScrapIds((prev) =>
-      prev.includes(id) ? prev.filter((v) => v !== id) : [id, ...prev],
+  const toggleScrap = useCallback((news: NewsItem) => {
+    setScraps((prev) =>
+      prev.some((item) => item.id === news.id)
+        ? prev.filter((item) => item.id !== news.id)
+        : [news, ...prev],
     );
   }, []);
 
-  return { scrapIds, isScrapped, toggleScrap };
+  return { scraps, isScrapped, toggleScrap };
 }
