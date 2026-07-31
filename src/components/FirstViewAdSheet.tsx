@@ -48,10 +48,6 @@ export function FirstViewAdSheet({
             광고를 준비하고 있어요. 잠시 후 다시 시도해 주세요.
           </span>
         )}
-
-        <Button display="full" color="dark" variant="weak" onClick={onSkip}>
-          건너뛰기
-        </Button>
       </div>
     </BottomSheet>
   );

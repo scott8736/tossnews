@@ -53,10 +53,37 @@ function App() {
   const firstViewReward = useFirstViewReward();
   const pendingNewsRef = useRef<NewsItem | null>(null);
   const detailCloseCountRef = useRef(0);
+  const detailOpenRef = useRef(false);
 
   useEffect(() => {
     pendingNewsRef.current = pendingNews;
   }, [pendingNews]);
+
+  // 기사 상세를 열 때 히스토리를 하나 쌓아둬요. 그래야 기기/토스 앱의 최상단
+  // 뒤로가기를 눌렀을 때 미니앱이 통째로 종료되지 않고 상세만 닫혀요.
+  useEffect(() => {
+    const isOpen = selectedNews !== null;
+    if (isOpen && !detailOpenRef.current) {
+      window.history.pushState({ ntnView: "newsDetail" }, "");
+    }
+    detailOpenRef.current = isOpen;
+  }, [selectedNews]);
+
+  useEffect(() => {
+    function handlePopState() {
+      setSelectedNews((current) => {
+        if (current === null) return current;
+        detailCloseCountRef.current += 1;
+        if (detailCloseCountRef.current % INTERSTITIAL_EVERY_N_CLOSES === 0) {
+          interstitialAd.show();
+        }
+        return null;
+      });
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [interstitialAd]);
 
   // 첫 뉴스 보기 광고를 끝까지 시청하면 대기 중이던 기사를 열어줘요.
   const handleFirstViewRewardEarned = useCallback(() => {
@@ -90,12 +117,10 @@ function App() {
     setPendingNews(null);
   }
 
+  // 실제 닫기 처리는 popstate 핸들러가 담당해요. 여기서는 쌓아둔 히스토리를
+  // 한 칸 되돌려서 상세 화면의 "뒤로 가기"와 기기 뒤로가기가 항상 같은 경로를 타게 해요.
   function handleCloseDetail() {
-    setSelectedNews(null);
-    detailCloseCountRef.current += 1;
-    if (detailCloseCountRef.current % INTERSTITIAL_EVERY_N_CLOSES === 0) {
-      interstitialAd.show();
-    }
+    window.history.back();
   }
 
   useEffect(() => {
