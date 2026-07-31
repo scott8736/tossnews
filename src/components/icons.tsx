@@ -108,6 +108,20 @@ export function CheckCircleIcon({
   );
 }
 
+export function CoinIcon({ size = 24, color = "#191F28" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke={color} strokeWidth={1.8} />
+      <path
+        d="M9.5 14.5c.4.8 1.3 1.3 2.5 1.3 1.7 0 2.8-.8 2.8-2 0-1.3-1.1-1.7-2.8-2-1.7-.3-2.8-.7-2.8-2 0-1.2 1.1-2 2.8-2 1.2 0 2.1.5 2.5 1.3M12 7.2v1.1M12 15.8v1"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function FlameIcon({ size = 14, color = "#F04452" }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">

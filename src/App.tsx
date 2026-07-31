@@ -1,13 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { TossAds } from "@apps-in-toss/web-framework";
 import { SegmentedControl, Skeleton, Top } from "@toss/tds-mobile";
 import "./App.css";
+import { BannerAd } from "./ads/BannerAd";
+import { safeIsSupported } from "./ads/safeIsSupported";
+import { useInterstitialAd } from "./ads/useInterstitialAd";
 import { BreakingTicker } from "./components/BreakingTicker";
 import { CategoryTabs, type ActiveTab } from "./components/CategoryTabs";
 import { NewsDetail } from "./components/NewsDetail";
 import { NewsListItem } from "./components/NewsListItem";
+import { PointsSheet } from "./components/PointsSheet";
 import { PreferenceSheet } from "./components/PreferenceSheet";
 import { ScrapSheet } from "./components/ScrapSheet";
-import { BookmarkIcon, SettingsIcon } from "./components/icons";
+import { BookmarkIcon, CoinIcon, SettingsIcon } from "./components/icons";
 import { CATEGORIES } from "./data/categories";
 import {
   fetchBreakingNews,
@@ -21,6 +26,9 @@ import type { NewsItem, SortOrder } from "./types";
 
 const ALL_CATEGORY_IDS = CATEGORIES.map((c) => c.id);
 
+// 기사를 이만큼 닫을 때마다 전면 광고를 한 번 보여줘요. (너무 자주 노출되지 않도록)
+const INTERSTITIAL_EVERY_N_CLOSES = 3;
+
 function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("all");
   const [sort, setSort] = useState<SortOrder>("date");
@@ -31,9 +39,32 @@ function App() {
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
   const [preferenceOpen, setPreferenceOpen] = useState(false);
   const [scrapOpen, setScrapOpen] = useState(false);
+  const [pointsOpen, setPointsOpen] = useState(false);
 
   const { scraps, isScrapped, toggleScrap } = useScraps();
   const { preferred, toggle: togglePreferred } = usePreferredCategories();
+  const interstitialAd = useInterstitialAd();
+  const detailCloseCountRef = useRef(0);
+
+  function closeSheets() {
+    setScrapOpen(false);
+    setPreferenceOpen(false);
+    setPointsOpen(false);
+  }
+
+  function handleCloseDetail() {
+    setSelectedNews(null);
+    detailCloseCountRef.current += 1;
+    if (detailCloseCountRef.current % INTERSTITIAL_EVERY_N_CLOSES === 0) {
+      interstitialAd.show();
+    }
+  }
+
+  useEffect(() => {
+    if (safeIsSupported(() => TossAds.initialize.isSupported())) {
+      TossAds.initialize({});
+    }
+  }, []);
 
   useEffect(() => {
     fetchBreakingNews().then(setBreakingItems).catch(() => setBreakingItems([]));
@@ -89,9 +120,19 @@ function App() {
         right={
           <div style={{ display: "flex", gap: 4 }}>
             <button
+              aria-label="내 코인 보기"
+              onClick={() => {
+                closeSheets();
+                setPointsOpen(true);
+              }}
+              style={{ border: "none", background: "none", padding: 8, cursor: "pointer" }}
+            >
+              <CoinIcon size={22} color="#FFB800" />
+            </button>
+            <button
               aria-label="스크랩한 뉴스 보기"
               onClick={() => {
-                setPreferenceOpen(false);
+                closeSheets();
                 setScrapOpen(true);
               }}
               style={{ border: "none", background: "none", padding: 8, cursor: "pointer" }}
@@ -101,7 +142,7 @@ function App() {
             <button
               aria-label="관심 카테고리 설정"
               onClick={() => {
-                setScrapOpen(false);
+                closeSheets();
                 setPreferenceOpen(true);
               }}
               style={{ border: "none", background: "none", padding: 8, cursor: "pointer" }}
@@ -149,6 +190,10 @@ function App() {
           <SegmentedControl.Item value="date">최신순</SegmentedControl.Item>
           <SegmentedControl.Item value="sim">정확도순</SegmentedControl.Item>
         </SegmentedControl>
+      </div>
+
+      <div style={{ padding: "0 20px 12px" }}>
+        <BannerAd />
       </div>
 
       <div style={{ paddingBottom: 24 }}>
@@ -205,7 +250,7 @@ function App() {
         <NewsDetail
           news={selectedNews}
           scrapped={isScrapped(selectedNews.id)}
-          onClose={() => setSelectedNews(null)}
+          onClose={handleCloseDetail}
           onToggleScrap={toggleScrap}
         />
       )}
@@ -224,6 +269,8 @@ function App() {
         onOpenNews={setSelectedNews}
         onToggleScrap={toggleScrap}
       />
+
+      <PointsSheet open={pointsOpen} onClose={() => setPointsOpen(false)} />
     </>
   );
 }
