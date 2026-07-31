@@ -15,6 +15,10 @@ const CATEGORY_QUERY: Record<string, string> = {
   entertainment: "연예",
 };
 
+// 네이버 API 호출 결과를 이 시간(초)만큼 Cloudflare 엣지에 캐싱해요.
+// 사용자가 아무리 많아도, 같은 카테고리/정렬 조합은 이 시간 동안 네이버를 한 번만 호출해요.
+const CACHE_TTL_SECONDS = 180;
+
 function corsHeaders(env: Env): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN ?? "*",
@@ -23,19 +27,24 @@ function corsHeaders(env: Env): Record<string, string> {
   };
 }
 
-function jsonResponse(env: Env, body: unknown, status = 200): Response {
+function jsonResponse(
+  env: Env,
+  body: unknown,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       "Content-Type": "application/json",
-      "Cache-Control": "public, max-age=60",
       ...corsHeaders(env),
+      ...extraHeaders,
     },
   });
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders(env) });
     }
@@ -61,6 +70,21 @@ export default {
     const displayParam = Number(url.searchParams.get("display") ?? 20);
     const display = Math.min(Math.max(displayParam, 1), 30);
 
+    // category/sort/display 조합별로 캐시 키를 만들어요. (요청자 IP 등은 키에 안 들어가서
+    // 전 세계 사용자가 같은 캐시를 공유해요.)
+    const cache = caches.default;
+    const cacheKey = new Request(
+      `https://tossnews-proxy.cache/news?category=${category}&sort=${sort}&display=${display}`,
+      { method: "GET" },
+    );
+
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      const hit = new Response(cached.body, cached);
+      hit.headers.set("X-Cache", "HIT");
+      return hit;
+    }
+
     const naverUrl = new URL("https://openapi.naver.com/v1/search/news.json");
     naverUrl.searchParams.set("query", query);
     naverUrl.searchParams.set("display", String(display));
@@ -74,6 +98,7 @@ export default {
     });
 
     if (!naverRes.ok) {
+      // 네이버 쪽 에러는 캐싱하지 않아요. 다음 요청에서 바로 재시도할 수 있게 해요.
       return jsonResponse(
         env,
         { error: "naver_api_error", status: naverRes.status },
@@ -82,6 +107,13 @@ export default {
     }
 
     const data = await naverRes.json();
-    return jsonResponse(env, data);
+    const response = jsonResponse(env, data, 200, {
+      "Cache-Control": `public, max-age=${CACHE_TTL_SECONDS}`,
+      "X-Cache": "MISS",
+    });
+
+    ctx.waitUntil(cache.put(cacheKey, response.clone()));
+
+    return response;
   },
 };
