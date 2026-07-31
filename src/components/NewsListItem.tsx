@@ -9,6 +9,7 @@ interface NewsListItemProps {
   scrapped: boolean;
   onOpen: (news: NewsItem) => void;
   onToggleScrap: (news: NewsItem) => void;
+  rank?: number;
 }
 
 export function NewsListItem({
@@ -16,6 +17,7 @@ export function NewsListItem({
   scrapped,
   onOpen,
   onToggleScrap,
+  rank,
 }: NewsListItemProps) {
   const category = CATEGORY_MAP[news.category];
 
@@ -24,9 +26,20 @@ export function NewsListItem({
       onClick={() => onOpen(news)}
       withTouchEffect
       left={
-        <ListRow.AssetText shape="squircle" size="small">
-          {category.initial}
-        </ListRow.AssetText>
+        rank ? (
+          <ListRow.AssetText
+            shape="squircle"
+            size="small"
+            backgroundColor={rank <= 3 ? "#FFF1F1" : undefined}
+            color={rank <= 3 ? "#F04452" : undefined}
+          >
+            {rank}
+          </ListRow.AssetText>
+        ) : (
+          <ListRow.AssetText shape="squircle" size="small">
+            {category.initial}
+          </ListRow.AssetText>
+        )
       }
       contents={
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

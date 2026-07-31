@@ -113,23 +113,19 @@ export function NewsDetail({
         <button
           onClick={() => openExternalUrl(news.link)}
           style={{
-            display: "flex",
+            display: "inline-flex",
             alignItems: "center",
-            justifyContent: "space-between",
-            width: "100%",
-            boxSizing: "border-box",
-            padding: "14px 16px",
-            borderRadius: 12,
-            border: "1px solid #E5E8EB",
-            background: "#F9FAFB",
+            gap: 4,
+            border: "none",
+            background: "none",
+            padding: 0,
             cursor: "pointer",
-            fontSize: 14,
-            fontWeight: 600,
-            color: "#333D4B",
+            fontSize: 13,
+            color: "#8B95A1",
           }}
         >
-          {news.source}에서 원문 기사 보기
-          <span aria-hidden="true">→</span>
+          {news.source} 원문 보기
+          <span aria-hidden="true">›</span>
         </button>
       </div>
 

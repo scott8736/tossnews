@@ -85,27 +85,43 @@ export async function fetchNewsByCategory(
   return items.map((item) => ({ ...item, category }));
 }
 
-export async function fetchNewsForCategories(
+export interface HomeFeed {
+  top: NewsItem[];
+  byCategory: Record<CategoryId, NewsItem[]>;
+}
+
+// "전체" 탭에 쓸 홈 피드예요. 카테고리별 최신 기사를 모아, 그중 가장 최신 10개를
+// TOP 10으로, 카테고리별로는 최신 5개씩 보여줘요. (네이버 검색 API는 댓글 수를
+// 제공하지 않아서 "댓글 많은 순"이 아니라 "최신순"을 인기의 기준으로 써요.)
+export async function fetchHomeFeed(
   categories: CategoryId[],
-  sort: SortOrder,
   perCategory = 6,
-): Promise<NewsItem[]> {
+): Promise<HomeFeed> {
+  const byCategory = {} as Record<CategoryId, NewsItem[]>;
+
   if (!isLiveDataEnabled()) {
-    return MOCK_NEWS_ITEMS.filter((item) => categories.includes(item.category));
+    for (const category of categories) {
+      byCategory[category] = MOCK_NEWS_ITEMS.filter(
+        (item) => item.category === category,
+      ).slice(0, perCategory);
+    }
+  } else {
+    await Promise.all(
+      categories.map(async (category) => {
+        const items = await fetchCategory(category, "date", perCategory);
+        byCategory[category] = items.map((item) => ({ ...item, category }));
+      }),
+    );
   }
 
-  const results = await Promise.all(
-    categories.map(async (category) => {
-      const items = await fetchCategory(category, sort, perCategory);
-      return items.map((item) => ({ ...item, category }));
-    }),
-  );
-
-  return results
+  const top = Object.values(byCategory)
     .flat()
     .sort(
       (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
-    );
+    )
+    .slice(0, 10);
+
+  return { top, byCategory };
 }
 
 export async function fetchBreakingNews(limit = 6): Promise<NewsItem[]> {

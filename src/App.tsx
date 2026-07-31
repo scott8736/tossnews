@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { TossAds } from "@apps-in-toss/web-framework";
-import { SegmentedControl, Skeleton, Top } from "@toss/tds-mobile";
+import { ListHeader, SegmentedControl, Skeleton, Top } from "@toss/tds-mobile";
 import "./App.css";
 import { BannerAd } from "./ads/BannerAd";
 import { safeIsSupported } from "./ads/safeIsSupported";
@@ -13,16 +13,17 @@ import { PointsSheet } from "./components/PointsSheet";
 import { PreferenceSheet } from "./components/PreferenceSheet";
 import { ScrapSheet } from "./components/ScrapSheet";
 import { BookmarkIcon, CoinIcon, SettingsIcon } from "./components/icons";
-import { CATEGORIES } from "./data/categories";
+import { CATEGORIES, CATEGORY_MAP } from "./data/categories";
 import {
   fetchBreakingNews,
   fetchNewsByCategory,
-  fetchNewsForCategories,
+  fetchHomeFeed,
   isLiveDataEnabled,
+  type HomeFeed,
 } from "./api/naverNews";
 import { usePreferredCategories } from "./hooks/usePreferredCategories";
 import { useScraps } from "./hooks/useScraps";
-import type { NewsItem, SortOrder } from "./types";
+import type { CategoryId, NewsItem, SortOrder } from "./types";
 
 const ALL_CATEGORY_IDS = CATEGORIES.map((c) => c.id);
 
@@ -33,6 +34,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("all");
   const [sort, setSort] = useState<SortOrder>("date");
   const [items, setItems] = useState<NewsItem[]>([]);
+  const [homeFeed, setHomeFeed] = useState<HomeFeed | null>(null);
   const [breakingItems, setBreakingItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -77,18 +79,23 @@ function App() {
       setLoading(true);
       setErrorMessage(null);
       try {
-        const result =
-          activeTab === "all"
-            ? await fetchNewsForCategories(
-                preferred.length > 0 ? preferred : ALL_CATEGORY_IDS,
-                sort,
-              )
-            : await fetchNewsByCategory(activeTab, sort);
-
-        if (!cancelled) setItems(result);
+        if (activeTab === "all") {
+          const feed = await fetchHomeFeed(ALL_CATEGORY_IDS);
+          if (!cancelled) {
+            setHomeFeed(feed);
+            setItems([]);
+          }
+        } else {
+          const result = await fetchNewsByCategory(activeTab, sort);
+          if (!cancelled) {
+            setItems(result);
+            setHomeFeed(null);
+          }
+        }
       } catch (error) {
         if (!cancelled) {
           setItems([]);
+          setHomeFeed(null);
           setErrorMessage(
             error instanceof Error ? error.message : "뉴스를 불러오지 못했어요.",
           );
@@ -102,7 +109,12 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, sort, preferred]);
+  }, [activeTab, sort]);
+
+  const orderedCategoryIds: CategoryId[] = [
+    ...preferred,
+    ...ALL_CATEGORY_IDS.filter((id) => !preferred.includes(id)),
+  ];
 
   return (
     <>
@@ -175,22 +187,24 @@ function App() {
 
       <CategoryTabs active={activeTab} onChange={setActiveTab} />
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          padding: "0 20px 8px",
-        }}
-      >
-        <SegmentedControl
-          size="small"
-          value={sort}
-          onChange={(value) => setSort(value as SortOrder)}
+      {activeTab !== "all" && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            padding: "0 20px 8px",
+          }}
         >
-          <SegmentedControl.Item value="date">최신순</SegmentedControl.Item>
-          <SegmentedControl.Item value="sim">정확도순</SegmentedControl.Item>
-        </SegmentedControl>
-      </div>
+          <SegmentedControl
+            size="small"
+            value={sort}
+            onChange={(value) => setSort(value as SortOrder)}
+          >
+            <SegmentedControl.Item value="date">최신순</SegmentedControl.Item>
+            <SegmentedControl.Item value="sim">정확도순</SegmentedControl.Item>
+          </SegmentedControl>
+        </div>
+      )}
 
       <div style={{ padding: "0 20px 12px" }}>
         <BannerAd />
@@ -219,7 +233,64 @@ function App() {
           </div>
         )}
 
-        {!loading && !errorMessage && items.length === 0 && (
+        {!loading && !errorMessage && activeTab === "all" && homeFeed && (
+          <>
+            <ListHeader
+              title={
+                <ListHeader.TitleParagraph typography="t5" fontWeight="bold">
+                  지금 가장 빠른 소식 TOP 10
+                </ListHeader.TitleParagraph>
+              }
+            />
+            {homeFeed.top.map((news, index) => (
+              <NewsListItem
+                key={news.id}
+                news={news}
+                rank={index + 1}
+                scrapped={isScrapped(news.id)}
+                onOpen={setSelectedNews}
+                onToggleScrap={toggleScrap}
+              />
+            ))}
+
+            {orderedCategoryIds.map((categoryId) => {
+              const categoryItems = homeFeed.byCategory[categoryId] ?? [];
+              if (categoryItems.length === 0) return null;
+              const category = CATEGORY_MAP[categoryId];
+
+              return (
+                <div key={categoryId} style={{ marginTop: 20 }}>
+                  <ListHeader
+                    title={
+                      <ListHeader.TitleParagraph typography="t5" fontWeight="bold">
+                        {category.label}
+                      </ListHeader.TitleParagraph>
+                    }
+                    right={
+                      <ListHeader.RightArrow
+                        typography="t7"
+                        onClick={() => setActiveTab(categoryId)}
+                      >
+                        더보기
+                      </ListHeader.RightArrow>
+                    }
+                  />
+                  {categoryItems.slice(0, 5).map((news) => (
+                    <NewsListItem
+                      key={news.id}
+                      news={news}
+                      scrapped={isScrapped(news.id)}
+                      onOpen={setSelectedNews}
+                      onToggleScrap={toggleScrap}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+          </>
+        )}
+
+        {!loading && !errorMessage && activeTab !== "all" && items.length === 0 && (
           <div
             style={{
               margin: "24px 20px",
@@ -235,6 +306,7 @@ function App() {
 
         {!loading &&
           !errorMessage &&
+          activeTab !== "all" &&
           items.map((news) => (
             <NewsListItem
               key={news.id}
