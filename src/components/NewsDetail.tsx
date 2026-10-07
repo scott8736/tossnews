@@ -1,45 +1,51 @@
-import { useState } from "react";
-import { Badge, CTAButton, FixedBottomCTA, Toast } from "@toss/tds-mobile";
+import { useEffect, useRef, useState } from "react";
+import { Button, CTAButton, FixedBottomCTA, Toast } from "@toss/tds-mobile";
+import { BannerAd } from "../ads/BannerAd";
 import { CATEGORY_MAP } from "../data/categories";
 import type { NewsItem } from "../types";
 import { openExternalUrl } from "../utils/openExternalUrl";
+import { shareNews } from "../utils/shareNews";
 import { toRelativeTime } from "../utils/time";
-import { BackIcon, BookmarkIcon, ShareIcon } from "./icons";
+import { BookmarkIcon, ShareIcon } from "./icons";
+import { NewsListItem } from "./NewsListItem";
 
 interface NewsDetailProps {
   news: NewsItem;
   scrapped: boolean;
-  onClose: () => void;
+  related: NewsItem[];
+  isScrapped: (id: string) => boolean;
+  onOpenNews: (news: NewsItem) => void;
   onToggleScrap: (news: NewsItem) => void;
 }
 
 export function NewsDetail({
   news,
   scrapped,
-  onClose,
+  related,
+  isScrapped,
+  onOpenNews,
   onToggleScrap,
 }: NewsDetailProps) {
-  const [toastOpen, setToastOpen] = useState(false);
+  const [toastText, setToastText] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const category = CATEGORY_MAP[news.category];
 
-  async function handleShare() {
-    const shareData = {
-      title: news.title,
-      text: news.description,
-      url: news.link,
-    };
+  // 아래 "다른 소식"을 눌러 기사가 바뀌면 맨 위부터 보여줘요.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [news.id]);
 
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-        return;
-      }
-      await navigator.clipboard.writeText(`${news.title}\n${news.link}`);
-      setToastOpen(true);
-    } catch {
-      // 사용자가 공유를 취소한 경우에는 별도 처리를 하지 않아요.
-    }
+  async function handleShare() {
+    const result = await shareNews(news);
+    if (result === "copied") setToastText("링크를 복사했어요");
   }
+
+  function handleToggleScrap() {
+    onToggleScrap(news);
+    setToastText(scrapped ? "스크랩을 취소했어요" : "스크랩했어요");
+  }
+
+  const others = related.filter((item) => item.id !== news.id).slice(0, 5);
 
   return (
     <div
@@ -52,86 +58,95 @@ export function NewsDetail({
         flexDirection: "column",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "14px 12px",
-          flexShrink: 0,
-        }}
-      >
-        <button
-          aria-label="뒤로 가기"
-          onClick={onClose}
-          style={{ border: "none", background: "none", padding: 8, cursor: "pointer" }}
-        >
-          <BackIcon />
-        </button>
-        <button
-          aria-label={scrapped ? "스크랩 취소" : "스크랩하기"}
-          onClick={() => onToggleScrap(news)}
-          style={{ border: "none", background: "none", padding: 8, cursor: "pointer" }}
-        >
-          <BookmarkIcon color={scrapped ? "#3182F6" : "#191F28"} filled={scrapped} />
-        </button>
-      </div>
+      {/* 상단 헤더·뒤로가기 버튼은 두지 않아요. 토스 내비게이션 바의 뒤로가기가 popstate로
+          상세를 닫아요. (2026-10-07 검수 반려: 뒤로가기 버튼 중복) */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", paddingBottom: 120 }}>
+        <article style={{ padding: "24px 20px 8px" }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#3182F6" }}>
+            {category.label}
+          </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 20px 32px" }}>
-        <Badge size="small" variant="weak" color={category.color}>
-          {category.label}
-        </Badge>
+          <h1
+            style={{
+              fontSize: 24,
+              lineHeight: 1.42,
+              fontWeight: 700,
+              letterSpacing: -0.4,
+              color: "#191F28",
+              margin: "8px 0 12px",
+              wordBreak: "keep-all",
+            }}
+          >
+            {news.title}
+          </h1>
 
-        <h1
-          style={{
-            fontSize: 21,
-            lineHeight: 1.4,
-            fontWeight: 700,
-            color: "#191F28",
-            margin: "12px 0 8px",
-          }}
-        >
-          {news.title}
-        </h1>
+          <div style={{ fontSize: 15, color: "#8B95A1" }}>
+            {news.source && `${news.source} · `}
+            {toRelativeTime(news.publishedAt)}
+          </div>
 
-        <div style={{ fontSize: 13, color: "#8B95A1", marginBottom: 20 }}>
-          {news.source} · {toRelativeTime(news.publishedAt)}
+          {news.description && (
+            <p
+              style={{
+                fontSize: 18,
+                lineHeight: 1.75,
+                color: "#333D4B",
+                margin: "24px 0 0",
+                wordBreak: "keep-all",
+              }}
+            >
+              {news.description}
+            </p>
+          )}
+
+          <div style={{ marginTop: 28 }}>
+            <Button
+              display="full"
+              size="large"
+              color="primary"
+              variant="weak"
+              onClick={() => openExternalUrl(news.link)}
+            >
+              {news.source ? `${news.source}에서 기사 전체 보기` : "기사 전체 보기"}
+            </Button>
+          </div>
+        </article>
+
+        <div style={{ padding: "16px 20px 8px" }}>
+          <BannerAd />
         </div>
 
-        <p
-          style={{
-            fontSize: 16,
-            lineHeight: 1.7,
-            color: "#333D4B",
-            whiteSpace: "pre-line",
-            marginBottom: 24,
-          }}
-        >
-          {news.description}
-        </p>
-
-        <button
-          onClick={() => openExternalUrl(news.link)}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            border: "none",
-            background: "none",
-            padding: 0,
-            cursor: "pointer",
-            fontSize: 13,
-            color: "#8B95A1",
-          }}
-        >
-          {news.source} 원문 보기
-          <span aria-hidden="true">›</span>
-        </button>
+        {others.length > 0 && (
+          <section>
+            <div style={{ height: 12, background: "#F2F4F6", margin: "12px 0 8px" }} />
+            <h2
+              style={{
+                fontSize: 19,
+                fontWeight: 700,
+                color: "#191F28",
+                margin: 0,
+                padding: "16px 20px 4px",
+              }}
+            >
+              {category.label} 다른 소식
+            </h2>
+            {others.map((item) => (
+              <NewsListItem
+                key={item.id}
+                news={item}
+                showCategory={false}
+                scrapped={isScrapped(item.id)}
+                onOpen={onOpenNews}
+                onToggleScrap={onToggleScrap}
+              />
+            ))}
+          </section>
+        )}
       </div>
 
       <FixedBottomCTA.Double
         leftButton={
-          <CTAButton color="dark" variant="weak" onClick={() => onToggleScrap(news)}>
+          <CTAButton color="dark" variant="weak" onClick={handleToggleScrap}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <BookmarkIcon size={18} color="#333D4B" filled={scrapped} />
               {scrapped ? "스크랩 취소" : "스크랩"}
@@ -142,7 +157,7 @@ export function NewsDetail({
           <CTAButton color="primary" variant="fill" onClick={handleShare}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <ShareIcon size={18} color="#fff" />
-              공유하기
+              친구에게 공유
             </span>
           </CTAButton>
         }
@@ -150,10 +165,10 @@ export function NewsDetail({
 
       <Toast
         position="bottom"
-        open={toastOpen}
-        text="링크를 복사했어요"
+        open={toastText !== null}
+        text={toastText ?? ""}
         duration={2000}
-        onClose={() => setToastOpen(false)}
+        onClose={() => setToastText(null)}
       />
     </div>
   );

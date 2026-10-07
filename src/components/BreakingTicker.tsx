@@ -29,7 +29,7 @@ export function BreakingTicker({ items, onSelect }: BreakingTickerProps) {
         display: "flex",
         alignItems: "center",
         gap: 8,
-        width: "100%",
+        width: "calc(100% - 40px)",
         boxSizing: "border-box",
         margin: "0 20px",
         padding: "12px 14px",
@@ -47,7 +47,7 @@ export function BreakingTicker({ items, onSelect }: BreakingTickerProps) {
           gap: 4,
           flexShrink: 0,
           color: "#F04452",
-          fontSize: 13,
+          fontSize: 15,
           fontWeight: 700,
         }}
       >
@@ -61,12 +61,13 @@ export function BreakingTicker({ items, onSelect }: BreakingTickerProps) {
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
-          fontSize: 14,
+          fontSize: 16,
           fontWeight: 600,
           color: "#191F28",
         }}
       >
-        {current.title}
+        {/* 앞에 "속보" 표시가 이미 있어서 제목 머리의 [속보]는 떼고 보여줘요. */}
+        {current.title.replace(/^\s*\[속보\]\s*/, "")}
       </span>
     </button>
   );

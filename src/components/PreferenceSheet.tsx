@@ -43,7 +43,7 @@ export function PreferenceSheet({
               onClick={() => onToggle(category.id)}
               withTouchEffect
               contents={
-                <span style={{ fontSize: 15, color: "#191F28" }}>
+                <span style={{ fontSize: 17, color: "#191F28" }}>
                   {category.label}
                 </span>
               }

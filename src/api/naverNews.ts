@@ -9,6 +9,8 @@ interface NaverNewsApiItem {
   link: string;
   description: string;
   pubDate: string;
+  // 워커가 주요 언론사로 확인한 경우에만 이름이 들어와요.
+  press?: string | null;
 }
 
 interface NaverNewsApiResponse {
@@ -63,7 +65,7 @@ async function fetchCategory(
     title: stripHtml(item.title),
     description: stripHtml(item.description),
     link: item.link || item.originallink,
-    source: extractSource(item.originallink || item.link),
+    source: item.press || extractSource(item.originallink || item.link),
     publishedAt: new Date(item.pubDate).toISOString(),
   }));
 }
@@ -114,11 +116,20 @@ export async function fetchHomeFeed(
     );
   }
 
+  // 같은 기사가 두 분야에 걸려 들어올 수 있어서 TOP 10에서는 한 번만 보여줘요.
+  const seen = new Set<string>();
   const top = Object.values(byCategory)
     .flat()
     .sort(
       (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
     )
+    .filter((item) => {
+      const key = item.title.replace(/\[[^\]]*\]|\s/g, "");
+      if (seen.has(item.id) || seen.has(key)) return false;
+      seen.add(item.id);
+      seen.add(key);
+      return true;
+    })
     .slice(0, 10);
 
   return { top, byCategory };

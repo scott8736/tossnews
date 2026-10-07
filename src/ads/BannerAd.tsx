@@ -13,7 +13,8 @@ export function BannerAd() {
     }
 
     const attached = TossAds.attachBanner(AD_GROUP_IDS.banner, containerRef.current, {
-      theme: "auto",
+      // 앱은 라이트 모드로만 그려요. (앱인토스 체크리스트)
+      theme: "light",
       tone: "blackAndWhite",
       variant: "expanded",
     });

@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TossAds } from "@apps-in-toss/web-framework";
-import { ListHeader, SegmentedControl, Skeleton, Top } from "@toss/tds-mobile";
+import { ListHeader, SegmentedControl, Skeleton, Toast, Top } from "@toss/tds-mobile";
 import "./App.css";
 import { BannerAd } from "./ads/BannerAd";
 import { safeIsSupported } from "./ads/safeIsSupported";
 import { useInterstitialAd } from "./ads/useInterstitialAd";
-import { useRewardedAd } from "./ads/useRewardedAd";
+import { readEntryParams } from "./utils/shareNews";
 import { BreakingTicker } from "./components/BreakingTicker";
 import { CategoryTabs, type ActiveTab } from "./components/CategoryTabs";
-import { FirstViewAdSheet } from "./components/FirstViewAdSheet";
+import { MorningAlertCard } from "./components/MorningAlertCard";
 import { NewsDetail } from "./components/NewsDetail";
 import { NewsListItem } from "./components/NewsListItem";
-import { PointsSheet } from "./components/PointsSheet";
 import { PreferenceSheet } from "./components/PreferenceSheet";
 import { ScrapSheet } from "./components/ScrapSheet";
-import { BookmarkIcon, CoinIcon, SettingsIcon } from "./components/icons";
+import { BookmarkIcon, SettingsIcon } from "./components/icons";
 import { CATEGORIES, CATEGORY_MAP } from "./data/categories";
 import {
   fetchBreakingNews,
@@ -23,41 +22,58 @@ import {
   isLiveDataEnabled,
   type HomeFeed,
 } from "./api/naverNews";
-import { useFirstViewReward } from "./hooks/useFirstViewReward";
+import { useMorningAlert } from "./hooks/useMorningAlert";
 import { usePreferredCategories } from "./hooks/usePreferredCategories";
 import { useScraps } from "./hooks/useScraps";
 import type { CategoryId, NewsItem, SortOrder } from "./types";
 
 const ALL_CATEGORY_IDS = CATEGORIES.map((c) => c.id);
 
-// 기사를 이만큼 닫을 때마다 전면 광고를 한 번 보여줘요. (너무 자주 노출되지 않도록)
-const INTERSTITIAL_EVERY_N_CLOSES = 3;
+// 기사를 이만큼 닫았을 때 전면 광고를 보여줘요. 노출 정책(같은 행동마다 반복 금지)에 맞춰
+// 한 번 들어온 동안에는 한 번만 보여주고, 나오기 전에 안내 문구를 먼저 띄워요.
+const INTERSTITIAL_AFTER_CLOSES = 3;
+const INTERSTITIAL_NOTICE_MS = 1200;
+
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+function formatToday(date = new Date()): string {
+  return `${date.getMonth() + 1}월 ${date.getDate()}일 ${WEEKDAYS[date.getDay()]}요일`;
+}
+
+function formatClock(date: Date): string {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function SectionDivider() {
+  return <div style={{ height: 12, background: "#F2F4F6", margin: "16px 0 4px" }} />;
+}
 
 function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>("all");
+  // 공유 링크나 주요 기능 링크로 들어오면 그 탭·기사로 바로 보여줘요.
+  const [entry] = useState(() => readEntryParams());
+  const [activeTab, setActiveTab] = useState<ActiveTab>(entry.tab ?? "all");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [sort, setSort] = useState<SortOrder>("date");
   const [items, setItems] = useState<NewsItem[]>([]);
   const [homeFeed, setHomeFeed] = useState<HomeFeed | null>(null);
   const [breakingItems, setBreakingItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
-  const [pendingNews, setPendingNews] = useState<NewsItem | null>(null);
+  const [selectedNews, setSelectedNews] = useState<NewsItem | null>(entry.article);
   const [preferenceOpen, setPreferenceOpen] = useState(false);
   const [scrapOpen, setScrapOpen] = useState(false);
-  const [pointsOpen, setPointsOpen] = useState(false);
 
   const { scraps, isScrapped, toggleScrap } = useScraps();
   const { preferred, toggle: togglePreferred } = usePreferredCategories();
   const interstitialAd = useInterstitialAd();
-  const firstViewReward = useFirstViewReward();
-  const pendingNewsRef = useRef<NewsItem | null>(null);
+  const [alertToastOpen, setAlertToastOpen] = useState(false);
+  const showAlertToast = useCallback(() => setAlertToastOpen(true), []);
+  const morningAlert = useMorningAlert(showAlertToast);
   const detailCloseCountRef = useRef(0);
+  const interstitialShownRef = useRef(false);
+  const [adNoticeOpen, setAdNoticeOpen] = useState(false);
   const detailOpenRef = useRef(false);
-
-  useEffect(() => {
-    pendingNewsRef.current = pendingNews;
-  }, [pendingNews]);
 
   // 기사 상세를 열 때 히스토리를 하나 쌓아둬요. 그래야 기기/토스 앱의 최상단
   // 뒤로가기를 눌렀을 때 미니앱이 통째로 종료되지 않고 상세만 닫혀요.
@@ -70,57 +86,43 @@ function App() {
   }, [selectedNews]);
 
   useEffect(() => {
+    let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+
     function handlePopState() {
-      setSelectedNews((current) => {
-        if (current === null) return current;
-        detailCloseCountRef.current += 1;
-        if (detailCloseCountRef.current % INTERSTITIAL_EVERY_N_CLOSES === 0) {
+      if (!detailOpenRef.current) return;
+      setSelectedNews(null);
+      detailCloseCountRef.current += 1;
+
+      if (
+        !interstitialShownRef.current &&
+        detailCloseCountRef.current >= INTERSTITIAL_AFTER_CLOSES &&
+        interstitialAd.isReady
+      ) {
+        interstitialShownRef.current = true;
+        setAdNoticeOpen(true);
+        noticeTimer = setTimeout(() => {
+          setAdNoticeOpen(false);
           interstitialAd.show();
-        }
-        return null;
-      });
+        }, INTERSTITIAL_NOTICE_MS);
+      }
     }
 
     window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      clearTimeout(noticeTimer);
+    };
   }, [interstitialAd]);
-
-  // 첫 뉴스 보기 광고를 끝까지 시청하면 대기 중이던 기사를 열어줘요.
-  const handleFirstViewRewardEarned = useCallback(() => {
-    const news = pendingNewsRef.current;
-    if (!news) return;
-    firstViewReward.markShown();
-    setSelectedNews(news);
-    setPendingNews(null);
-  }, [firstViewReward]);
-
-  const rewardedAd = useRewardedAd(handleFirstViewRewardEarned);
 
   function closeSheets() {
     setScrapOpen(false);
     setPreferenceOpen(false);
-    setPointsOpen(false);
   }
 
-  // 처음 기사를 열 때만 리워드 광고 시청을 안내하고, 이후엔 바로 열어요.
+  // 기사는 광고 없이 바로 열어요. 처음 온 사람이 첫 기사에서 광고에 막히면 돌아오지 않아요.
+  // 광고는 기사를 여러 번 닫았을 때의 전면 광고와 코인 시트의 리워드 광고만 남겨요.
   function handleOpenNews(news: NewsItem) {
-    if (!firstViewReward.alreadyShown && rewardedAd.isSupported) {
-      setPendingNews(news);
-      return;
-    }
     setSelectedNews(news);
-  }
-
-  function handleSkipFirstViewAd() {
-    firstViewReward.markShown();
-    setSelectedNews(pendingNewsRef.current);
-    setPendingNews(null);
-  }
-
-  // 실제 닫기 처리는 popstate 핸들러가 담당해요. 여기서는 쌓아둔 히스토리를
-  // 한 칸 되돌려서 상세 화면의 "뒤로 가기"와 기기 뒤로가기가 항상 같은 경로를 타게 해요.
-  function handleCloseDetail() {
-    window.history.back();
   }
 
   useEffect(() => {
@@ -131,7 +133,7 @@ function App() {
 
   useEffect(() => {
     fetchBreakingNews().then(setBreakingItems).catch(() => setBreakingItems([]));
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,12 +147,14 @@ function App() {
           if (!cancelled) {
             setHomeFeed(feed);
             setItems([]);
+            setUpdatedAt(new Date());
           }
         } else {
           const result = await fetchNewsByCategory(activeTab, sort);
           if (!cancelled) {
             setItems(result);
             setHomeFeed(null);
+            setUpdatedAt(new Date());
           }
         }
       } catch (error) {
@@ -170,7 +174,18 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, sort]);
+  }, [activeTab, sort, refreshKey]);
+
+  // 상세 화면 아래 "다른 소식"에 쓸 같은 분야 기사예요. 이미 불러온 것만 써서 추가 호출이 없어요.
+  function relatedOf(news: NewsItem): NewsItem[] {
+    const pool = [...(homeFeed?.byCategory[news.category] ?? []), ...items];
+    const seen = new Set<string>();
+    return pool.filter((item) => {
+      if (item.category !== news.category || seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  }
 
   const orderedCategoryIds: CategoryId[] = [
     ...preferred,
@@ -187,21 +202,32 @@ function App() {
         }
         subtitleBottom={
           <Top.SubtitleParagraph size={15}>
-            지금 이 순간, 가장 중요한 소식만 골라봤어요.
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {formatToday()}
+              {updatedAt && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <button
+                    onClick={() => setRefreshKey((key) => key + 1)}
+                    aria-label="새 소식 불러오기"
+                    style={{
+                      border: "none",
+                      background: "none",
+                      padding: 0,
+                      font: "inherit",
+                      color: "#3182F6",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {formatClock(updatedAt)} 기준 ↻
+                  </button>
+                </>
+              )}
+            </span>
           </Top.SubtitleParagraph>
         }
         right={
           <div style={{ display: "flex", gap: 4 }}>
-            <button
-              aria-label="내 코인 보기"
-              onClick={() => {
-                closeSheets();
-                setPointsOpen(true);
-              }}
-              style={{ border: "none", background: "none", padding: 8, cursor: "pointer" }}
-            >
-              <CoinIcon size={22} color="#FFB800" />
-            </button>
             <button
               aria-label="스크랩한 뉴스 보기"
               onClick={() => {
@@ -267,9 +293,13 @@ function App() {
         </div>
       )}
 
-      <div style={{ padding: "0 20px 12px" }}>
-        <BannerAd />
-      </div>
+      {/* 상세 화면에도 배너가 있어서, 상세가 열려 있는 동안 홈 배너는 내려둬요.
+          (같은 화면에 같은 형식 광고 2개 금지) */}
+      {selectedNews === null && (
+        <div style={{ padding: "0 20px 12px" }}>
+          <BannerAd />
+        </div>
+      )}
 
       <div style={{ paddingBottom: 24 }}>
         {loading && (
@@ -314,13 +344,21 @@ function App() {
               />
             ))}
 
+            {morningAlert.visible && (
+              <MorningAlertCard
+                onRequest={morningAlert.request}
+                onDismiss={morningAlert.dismiss}
+              />
+            )}
+
             {orderedCategoryIds.map((categoryId) => {
               const categoryItems = homeFeed.byCategory[categoryId] ?? [];
               if (categoryItems.length === 0) return null;
               const category = CATEGORY_MAP[categoryId];
 
               return (
-                <div key={categoryId} style={{ marginTop: 20 }}>
+                <div key={categoryId}>
+                  <SectionDivider />
                   <ListHeader
                     title={
                       <ListHeader.TitleParagraph typography="t5" fontWeight="bold">
@@ -340,6 +378,7 @@ function App() {
                     <NewsListItem
                       key={news.id}
                       news={news}
+                      showCategory={false}
                       scrapped={isScrapped(news.id)}
                       onOpen={handleOpenNews}
                       onToggleScrap={toggleScrap}
@@ -361,7 +400,9 @@ function App() {
               fontSize: 14,
             }}
           >
-            보여드릴 소식이 없어요.
+            지금은 이 분야에 새로 올라온 소식이 없어요.
+            <br />
+            잠시 후 위의 시각을 눌러 다시 불러와 주세요.
           </div>
         )}
 
@@ -372,6 +413,7 @@ function App() {
             <NewsListItem
               key={news.id}
               news={news}
+              showCategory={false}
               scrapped={isScrapped(news.id)}
               onOpen={handleOpenNews}
               onToggleScrap={toggleScrap}
@@ -383,7 +425,9 @@ function App() {
         <NewsDetail
           news={selectedNews}
           scrapped={isScrapped(selectedNews.id)}
-          onClose={handleCloseDetail}
+          related={relatedOf(selectedNews)}
+          isScrapped={isScrapped}
+          onOpenNews={setSelectedNews}
           onToggleScrap={toggleScrap}
         />
       )}
@@ -403,15 +447,35 @@ function App() {
         onToggleScrap={toggleScrap}
       />
 
-      <FirstViewAdSheet
-        open={pendingNews !== null}
-        isSupported={rewardedAd.isSupported}
-        isReady={rewardedAd.isReady}
-        onWatch={rewardedAd.show}
-        onSkip={handleSkipFirstViewAd}
+      <Toast
+        position="bottom"
+        open={alertToastOpen}
+        text="매일 아침 9시에 알려드릴게요"
+        duration={2500}
+        onClose={() => setAlertToastOpen(false)}
       />
 
-      <PointsSheet open={pointsOpen} onClose={() => setPointsOpen(false)} />
+      {adNoticeOpen && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            left: "50%",
+            bottom: 40,
+            transform: "translateX(-50%)",
+            padding: "12px 18px",
+            borderRadius: 999,
+            background: "rgba(25, 31, 40, 0.9)",
+            color: "#fff",
+            fontSize: 15,
+            fontWeight: 600,
+            whiteSpace: "nowrap",
+            zIndex: 200,
+          }}
+        >
+          잠시 후 광고가 나와요
+        </div>
+      )}
     </>
   );
 }
